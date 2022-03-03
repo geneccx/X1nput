@@ -104,6 +104,34 @@ void GetConfig() {
 }
 #pragma endregion
 
+bool ReconnectIO(bool OpenNewConsole)
+{
+	bool MadeConsole;
+
+	MadeConsole = false;
+	if (!AttachConsole(ATTACH_PARENT_PROCESS))
+	{
+		if (!OpenNewConsole)
+			return false;
+
+		MadeConsole = true;
+		if (!AllocConsole())
+			return false;   // Could throw here
+	}
+
+	FILE* fDummy;
+	freopen_s(&fDummy, "CONIN$", "r", stdin);
+	freopen_s(&fDummy, "CONOUT$", "w", stderr);
+	freopen_s(&fDummy, "CONOUT$", "w", stdout);
+
+	// C++ streams to console
+	std::ios_base::sync_with_stdio();
+
+	_flushall();
+
+	return MadeConsole;
+}
+
 // Gamepad scanning and racingWheel related methods
 #pragma region Stuff from GamePad.cpp
 
@@ -176,6 +204,8 @@ static HRESULT UserChanged(ABI::Windows::Gaming::Input::IGameController*, ABI::W
 // Scans for racingWheels (adds/removes racingWheels from racingWheels array)
 void ScanRacingWheels()
 {
+	std::cout << "ScanRacingWheels" << std::endl;
+
 	ComPtr<IVectorView<RacingWheel*>> wheels;
 	HRESULT hr = racingWheelStatics->get_RacingWheels(&wheels);
 	assert(SUCCEEDED(hr));
@@ -183,6 +213,8 @@ void ScanRacingWheels()
 	unsigned int count = 0;
 	hr = wheels->get_Size(&count);
 	assert(SUCCEEDED(hr));
+
+	std::cout << "Found " << count << std::endl;
 
 	// Check for removed racingWheels
 	for (size_t j = 0; j < MAX_PLAYER_COUNT; ++j)
@@ -265,6 +297,8 @@ void ScanRacingWheels()
 // GamepadAdded Event
 static HRESULT RacingWheelAdded(IInspectable *, ABI::Windows::Gaming::Input::IRacingWheel*)
 {
+	std::cout << "RacingWheelAdded" << std::endl;
+
 	ScanRacingWheels();
 	return S_OK;
 }
@@ -272,6 +306,8 @@ static HRESULT RacingWheelAdded(IInspectable *, ABI::Windows::Gaming::Input::IRa
 // GamepadRemoved Event
 static HRESULT RacingWheelRemoved(IInspectable *, ABI::Windows::Gaming::Input::IRacingWheel*)
 {
+	std::cout << "RacingWheelRemoved" << std::endl;
+
 	ScanRacingWheels();
 	return S_OK;
 }
@@ -311,19 +347,30 @@ BOOL CALLBACK InitHandleFunction(
 	PVOID Parameter,            // Optional parameter passed by InitOnceExecuteOnce            
 	PVOID *lpContext)           // Receives pointer to event object           
 {
+	ReconnectIO(true);
+
 	HRESULT hr = RoInitialize(RO_INIT_SINGLETHREADED);
 	assert(SUCCEEDED(hr));
+	std::cout << "RoInitialize(st): " << hr << std::endl;
 
 	hr = RoGetActivationFactory(HStringReference(L"Windows.Gaming.Input.RacingWheel").Get(), __uuidof(IRacingWheelStatics), &racingWheelStatics);
 	assert(SUCCEEDED(hr));
+	std::cout << "RoGetActivationFactory: " << hr << std::endl;
+	std::cout << "racingWheelStatics: " << racingWheelStatics << std::endl;
 
 	typedef __FIEventHandler_1_Windows__CGaming__CInput__CRacingWheel AddedHandler;
 	hr = racingWheelStatics->add_RacingWheelAdded(Callback<AddedHandler>(RacingWheelAdded).Get(), &gAddedToken);
 	assert(SUCCEEDED(hr));
+	std::cout << "add_RacingWheelAdded: " << hr
+		<< ", token=" << gAddedToken.value
+		<< std::endl;
 
 	typedef __FIEventHandler_1_Windows__CGaming__CInput__CRacingWheel RemovedHandler;
 	hr = racingWheelStatics->add_RacingWheelRemoved(Callback<RemovedHandler>(RacingWheelRemoved).Get(), &gRemovedToken);
 	assert(SUCCEEDED(hr));
+	std::cout << "add_RacingWheelRemoved: " << hr
+		<< ", token=" << gRemovedToken.value
+		<< std::endl;
 
 	// GetConfig();
 
@@ -399,6 +446,7 @@ typedef struct _XINPUT_KEYSTROKE
 DLLEXPORT DWORD WINAPI XInputGetState(_In_ DWORD dwUserIndex, _Out_ XINPUT_STATE *pState)
 {
 	InitializeRacingWheel();
+	//std::cout << "XInputGetState" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
@@ -467,6 +515,7 @@ DLLEXPORT DWORD WINAPI XInputGetState(_In_ DWORD dwUserIndex, _Out_ XINPUT_STATE
 DLLEXPORT DWORD WINAPI XInputSetState(_In_ DWORD dwUserIndex, _In_ XINPUT_VIBRATION *pVibration)
 {
 	InitializeRacingWheel();
+	std::cout << "XInputSetState" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
@@ -509,6 +558,7 @@ DLLEXPORT DWORD WINAPI XInputSetState(_In_ DWORD dwUserIndex, _In_ XINPUT_VIBRAT
 DLLEXPORT DWORD WINAPI XInputGetCapabilities(_In_ DWORD dwUserIndex, _In_ DWORD dwFlags, _Out_ XINPUT_CAPABILITIES *pCapabilities)
 {
 	InitializeRacingWheel();
+	std::cout << "XInputGetCapabilities" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
@@ -556,6 +606,7 @@ DLLEXPORT void WINAPI XInputEnable(_In_ BOOL enable)
 DLLEXPORT DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID* pDSoundRenderGuid, GUID* pDSoundCaptureGuid)
 {
 	InitializeRacingWheel();
+	std::cout << "XInputGetDSoundAudioDeviceGuids" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
@@ -578,6 +629,7 @@ DLLEXPORT DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID* 
 DLLEXPORT DWORD WINAPI XInputGetBatteryInformation(_In_ DWORD dwUserIndex, _In_ BYTE devType, _Out_ XINPUT_BATTERY_INFORMATION *pBatteryInformation)
 {
 	InitializeRacingWheel();
+	std::cout << "XInputGetBatteryInformation" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
@@ -626,6 +678,7 @@ DLLEXPORT DWORD WINAPI XInputGetBatteryInformation(_In_ DWORD dwUserIndex, _In_ 
 DLLEXPORT DWORD WINAPI XInputGetKeystroke(DWORD dwUserIndex, DWORD dwReserved, PXINPUT_KEYSTROKE pKeystroke)
 {
 	InitializeRacingWheel();
+	std::cout << "XInputGetKeystroke" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
@@ -651,6 +704,7 @@ DLLEXPORT DWORD WINAPI XInputGetStateEx(_In_ DWORD dwUserIndex, _Out_ XINPUT_STA
 DLLEXPORT DWORD WINAPI XInputWaitForGuideButton(_In_ DWORD dwUserIndex, _In_ DWORD dwFlag, _In_ LPVOID pVoid)
 {
 	InitializeRacingWheel();
+	std::cout << "XInputWaitForGuideButton" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
@@ -673,6 +727,7 @@ DLLEXPORT DWORD WINAPI XInputWaitForGuideButton(_In_ DWORD dwUserIndex, _In_ DWO
 DLLEXPORT DWORD XInputCancelGuideButtonWait(_In_ DWORD dwUserIndex)
 {
 	InitializeRacingWheel();
+	std::cout << "XInputCancelGuideButtonWait" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
@@ -695,6 +750,7 @@ DLLEXPORT DWORD XInputCancelGuideButtonWait(_In_ DWORD dwUserIndex)
 DLLEXPORT DWORD XInputPowerOffController(_In_ DWORD dwUserIndex)
 {
 	InitializeRacingWheel();
+	std::cout << "XInputPowerOffController" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;

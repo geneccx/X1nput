@@ -43,7 +43,7 @@
 
 
 #define XINPUT_DEVTYPE_GAMEPAD          0x01
-#define XINPUT_DEVSUBTYPE_GAMEPAD       0x01
+#define XINPUT_DEVSUBTYPE_WHEEL			0x02
 
 #define BATTERY_TYPE_DISCONNECTED		0x00
 
@@ -61,14 +61,14 @@ using namespace Microsoft::WRL::Wrappers;
 
 const float c_XboxOneThumbDeadZone = .24f;  // Recommended Xbox One controller deadzone
 
-ComPtr<IGamepadStatics> gamepadStatics;
-ComPtr<IGamepad> gamepads[MAX_PLAYER_COUNT];
+ComPtr<IRacingWheelStatics> racingWheelStatics;
+ComPtr<IRacingWheel> racingWheels[MAX_PLAYER_COUNT];
 EventRegistrationToken mUserChangeToken[MAX_PLAYER_COUNT];
 
 EventRegistrationToken gAddedToken;
 EventRegistrationToken gRemovedToken;
 
-int mMostRecentGamepad = 0;
+int mMostRecentWheel = 0;
 
 float RTriggerStrength = 0.25f;
 float LTriggerStrength = 0.25f;
@@ -104,7 +104,7 @@ void GetConfig() {
 }
 #pragma endregion
 
-// Gamepad scanning and gamepad related methods
+// Gamepad scanning and racingWheel related methods
 #pragma region Stuff from GamePad.cpp
 
 // DeadZone enum
@@ -173,28 +173,28 @@ static HRESULT UserChanged(ABI::Windows::Gaming::Input::IGameController*, ABI::W
 	return S_OK;
 }
 
-// Scans for gamepads (adds/removes gamepads from gamepads array)
-void ScanGamePads()
+// Scans for racingWheels (adds/removes racingWheels from racingWheels array)
+void ScanRacingWheels()
 {
-	ComPtr<IVectorView<Gamepad*>> pads;
-	HRESULT hr = gamepadStatics->get_Gamepads(&pads);
+	ComPtr<IVectorView<RacingWheel*>> wheels;
+	HRESULT hr = racingWheelStatics->get_RacingWheels(&wheels);
 	assert(SUCCEEDED(hr));
 
 	unsigned int count = 0;
-	hr = pads->get_Size(&count);
+	hr = wheels->get_Size(&count);
 	assert(SUCCEEDED(hr));
 
-	// Check for removed gamepads
+	// Check for removed racingWheels
 	for (size_t j = 0; j < MAX_PLAYER_COUNT; ++j)
 	{
-		if (gamepads[j])
+		if (racingWheels[j])
 		{
 			unsigned int k = 0;
 			for (; k < count; ++k)
 			{
-				ComPtr<IGamepad> pad;
-				hr = pads->GetAt(k, pad.GetAddressOf());
-				if (SUCCEEDED(hr) && (pad == gamepads[j]))
+				ComPtr<IRacingWheel> wheel;
+				hr = wheels->GetAt(k, wheel.GetAddressOf());
+				if (SUCCEEDED(hr) && (wheel == racingWheels[j]))
 				{
 					break;
 				}
@@ -203,36 +203,36 @@ void ScanGamePads()
 			if (k >= count)
 			{
 				ComPtr<IGameController> ctrl;
-				hr = gamepads[j].As(&ctrl);
+				hr = racingWheels[j].As(&ctrl);
 				if (SUCCEEDED(hr) && ctrl)
 				{
 					(void)ctrl->remove_UserChanged(mUserChangeToken[j]);
 					mUserChangeToken[j].value = 0;
 				}
 
-				gamepads[j].Reset();
+				racingWheels[j].Reset();
 			}
 		}
 	}
 
-	// Check for added gamepads
+	// Check for added racingWheels
 	for (unsigned int j = 0; j < count; ++j)
 	{
-		ComPtr<IGamepad> pad;
-		hr = pads->GetAt(j, pad.GetAddressOf());
+		ComPtr<IRacingWheel> wheel;
+		hr = wheels->GetAt(j, wheel.GetAddressOf());
 		if (SUCCEEDED(hr))
 		{
 			size_t empty = MAX_PLAYER_COUNT;
 			size_t k = 0;
 			for (; k < MAX_PLAYER_COUNT; ++k)
 			{
-				if (gamepads[k] == pad)
+				if (racingWheels[k] == wheel)
 				{
 					if (j == (count - 1))
-						mMostRecentGamepad = static_cast<int>(k);
+						mMostRecentWheel = static_cast<int>(k);
 					break;
 				}
-				else if (!gamepads[k])
+				else if (!racingWheels[k])
 				{
 					if (empty >= MAX_PLAYER_COUNT)
 						empty = k;
@@ -241,15 +241,15 @@ void ScanGamePads()
 
 			if (k >= MAX_PLAYER_COUNT)
 			{
-				// Silently ignore "extra" gamepads as there's no hard limit
+				// Silently ignore "extra" racingWheels as there's no hard limit
 				if (empty < MAX_PLAYER_COUNT)
 				{
-					gamepads[empty] = pad;
+					racingWheels[empty] = wheel;
 					if (j == (count - 1))
-						mMostRecentGamepad = static_cast<int>(empty);
+						mMostRecentWheel = static_cast<int>(empty);
 
 					ComPtr<IGameController> ctrl;
-					hr = pad.As(&ctrl);
+					hr = wheel.As(&ctrl);
 					if (SUCCEEDED(hr) && ctrl)
 					{
 						typedef __FITypedEventHandler_2_Windows__CGaming__CInput__CIGameController_Windows__CSystem__CUserChangedEventArgs UserHandler;
@@ -263,16 +263,16 @@ void ScanGamePads()
 }
 
 // GamepadAdded Event
-static HRESULT GamepadAdded(IInspectable *, ABI::Windows::Gaming::Input::IGamepad*)
+static HRESULT RacingWheelAdded(IInspectable *, ABI::Windows::Gaming::Input::IRacingWheel*)
 {
-	ScanGamePads();
+	ScanRacingWheels();
 	return S_OK;
 }
 
 // GamepadRemoved Event
-static HRESULT GamepadRemoved(IInspectable *, ABI::Windows::Gaming::Input::IGamepad*)
+static HRESULT RacingWheelRemoved(IInspectable *, ABI::Windows::Gaming::Input::IRacingWheel*)
 {
-	ScanGamePads();
+	ScanRacingWheels();
 	return S_OK;
 }
 #pragma endregion
@@ -293,7 +293,7 @@ BOOL CALLBACK InitHandleFunction(
 	PVOID Parameter,
 	PVOID *lpContext);
 
-bool InitializeGamepad()
+bool InitializeRacingWheel()
 {
 	// Execute the initialization callback function 
 	BOOL bStatus = InitOnceExecuteOnce(&g_InitOnce,          // One-time initialization structure
@@ -311,23 +311,23 @@ BOOL CALLBACK InitHandleFunction(
 	PVOID Parameter,            // Optional parameter passed by InitOnceExecuteOnce            
 	PVOID *lpContext)           // Receives pointer to event object           
 {
-	HRESULT hr = RoInitialize(RO_INIT_MULTITHREADED);
+	HRESULT hr = RoInitialize(RO_INIT_SINGLETHREADED);
 	assert(SUCCEEDED(hr));
 
-	hr = RoGetActivationFactory(HStringReference(L"Windows.Gaming.Input.Gamepad").Get(), __uuidof(IGamepadStatics), &gamepadStatics);
+	hr = RoGetActivationFactory(HStringReference(L"Windows.Gaming.Input.RacingWheel").Get(), __uuidof(IRacingWheelStatics), &racingWheelStatics);
 	assert(SUCCEEDED(hr));
 
-	typedef __FIEventHandler_1_Windows__CGaming__CInput__CGamepad AddedHandler;
-	hr = gamepadStatics->add_GamepadAdded(Callback<AddedHandler>(GamepadAdded).Get(), &gAddedToken);
+	typedef __FIEventHandler_1_Windows__CGaming__CInput__CRacingWheel AddedHandler;
+	hr = racingWheelStatics->add_RacingWheelAdded(Callback<AddedHandler>(RacingWheelAdded).Get(), &gAddedToken);
 	assert(SUCCEEDED(hr));
 
-	typedef __FIEventHandler_1_Windows__CGaming__CInput__CGamepad RemovedHandler;
-	hr = gamepadStatics->add_GamepadRemoved(Callback<RemovedHandler>(GamepadRemoved).Get(), &gRemovedToken);
+	typedef __FIEventHandler_1_Windows__CGaming__CInput__CRacingWheel RemovedHandler;
+	hr = racingWheelStatics->add_RacingWheelRemoved(Callback<RemovedHandler>(RacingWheelRemoved).Get(), &gRemovedToken);
 	assert(SUCCEEDED(hr));
 
-	GetConfig();
+	// GetConfig();
 
-	ScanGamePads();
+	ScanRacingWheels();
 
 	return TRUE;
 }
@@ -386,63 +386,67 @@ typedef struct _XINPUT_KEYSTROKE
 
 #define DLLEXPORT extern "C" __declspec(dllexport)
 
+/*
+  Racing wheel controller.
+
+  Left Stick X reports the wheel rotation, 
+  Right Trigger is the acceleration pedal,
+  and Left Trigger is the brake pedal.
+
+  Includes Directional Pad and most standard buttons (A, B, X, Y, START, BACK, LB, RB). LSB and RSB are optional.
+  https://docs.microsoft.com/en-us/windows/win32/xinput/xinput-and-controller-subtypes
+ */
 DLLEXPORT DWORD WINAPI XInputGetState(_In_ DWORD dwUserIndex, _Out_ XINPUT_STATE *pState)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	auto gamepad = gamepads[dwUserIndex];
+	auto racingWheel = racingWheels[dwUserIndex];
 
-	GamepadReading state;
-	HRESULT hr = gamepad->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheel->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 
 		DWORD keys = 0;
 
-		float LeftThumbstickX;
-		float LeftThumbstickY;
-		float RightThumbstickX;
-		float RightThumbstickY;
+		//float Wheel = ApplyLinearDeadZone(state.Wheel, 1.f, c_XboxOneThumbDeadZone);
 
-		ApplyStickDeadZone(state.LeftThumbstickX, state.LeftThumbstickY, DEAD_ZONE_INDEPENDENT_AXES, 1.f, c_XboxOneThumbDeadZone, LeftThumbstickX, LeftThumbstickY);
+		pState->Gamepad.bRightTrigger = state.Throttle * 255;
+		pState->Gamepad.bLeftTrigger = state.Brake * 255;
 
-		ApplyStickDeadZone(state.RightThumbstickX, state.RightThumbstickY, DEAD_ZONE_INDEPENDENT_AXES, 1.f, c_XboxOneThumbDeadZone, RightThumbstickX, RightThumbstickY);
+		pState->Gamepad.sThumbLX = (state.Wheel >= 0) ? state.Wheel * 32767 : state.Wheel * 32768;
+		pState->Gamepad.sThumbLY = 0;
 
-		pState->Gamepad.bRightTrigger = state.RightTrigger * 255;
-		pState->Gamepad.bLeftTrigger = state.LeftTrigger * 255;
-		pState->Gamepad.sThumbLX = (LeftThumbstickX >= 0) ? LeftThumbstickX * 32767 : LeftThumbstickX * 32768;
-		pState->Gamepad.sThumbLY = (LeftThumbstickY >= 0) ? LeftThumbstickY * 32767 : LeftThumbstickY * 32768;
-		pState->Gamepad.sThumbRX = (RightThumbstickX >= 0) ? RightThumbstickX * 32767 : RightThumbstickX * 32768;
-		pState->Gamepad.sThumbRY = (RightThumbstickY >= 0) ? RightThumbstickY * 32767 : RightThumbstickY * 32768;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button3) != 0) keys += XINPUT_GAMEPAD_A;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button4) != 0) keys += XINPUT_GAMEPAD_B;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button5) != 0) keys += XINPUT_GAMEPAD_X;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button6) != 0) keys += XINPUT_GAMEPAD_Y;
 
-		if ((state.Buttons & GamepadButtons::GamepadButtons_A) != 0) keys += XINPUT_GAMEPAD_A;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_X) != 0) keys += XINPUT_GAMEPAD_X;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_Y) != 0) keys += XINPUT_GAMEPAD_Y;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_B) != 0) keys += XINPUT_GAMEPAD_B;
+		/*
+		if ((state.Buttons & RacingWheelButtons::GamepadButtons_RightThumbstick) != 0) keys += XINPUT_GAMEPAD_RIGHT_THUMB;
+		if ((state.Buttons & RacingWheelButtons::GamepadButtons_LeftThumbstick) != 0) keys += XINPUT_GAMEPAD_LEFT_THUMB;
+		if ((state.Buttons & RacingWheelButtons::GamepadButtons_RightShoulder) != 0) keys += XINPUT_GAMEPAD_RIGHT_SHOULDER;
+		if ((state.Buttons & RacingWheelButtons::GamepadButtons_LeftShoulder) != 0) keys += XINPUT_GAMEPAD_LEFT_SHOULDER;
+		*/
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button2) != 0) keys += XINPUT_GAMEPAD_BACK;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button1) != 0) keys += XINPUT_GAMEPAD_START;
 
-		if ((state.Buttons & GamepadButtons::GamepadButtons_RightThumbstick) != 0) keys += XINPUT_GAMEPAD_RIGHT_THUMB;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_LeftThumbstick) != 0) keys += XINPUT_GAMEPAD_LEFT_THUMB;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_RightShoulder) != 0) keys += XINPUT_GAMEPAD_RIGHT_SHOULDER;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_LeftShoulder) != 0) keys += XINPUT_GAMEPAD_LEFT_SHOULDER;
-
-		if ((state.Buttons & GamepadButtons::GamepadButtons_View) != 0) keys += XINPUT_GAMEPAD_BACK;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_Menu) != 0) keys += XINPUT_GAMEPAD_START;
-
-		if ((state.Buttons & GamepadButtons::GamepadButtons_DPadUp) != 0) keys += XINPUT_GAMEPAD_DPAD_UP;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_DPadDown) != 0) keys += XINPUT_GAMEPAD_DPAD_DOWN;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_DPadLeft) != 0) keys += XINPUT_GAMEPAD_DPAD_LEFT;
-		if ((state.Buttons & GamepadButtons::GamepadButtons_DPadRight) != 0) keys += XINPUT_GAMEPAD_DPAD_RIGHT;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_DPadUp) != 0) keys += XINPUT_GAMEPAD_DPAD_UP;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_DPadDown) != 0) keys += XINPUT_GAMEPAD_DPAD_DOWN;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_DPadLeft) != 0) keys += XINPUT_GAMEPAD_DPAD_LEFT;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_DPadRight) != 0) keys += XINPUT_GAMEPAD_DPAD_RIGHT;
 
 		// Press both shoulder buttons and the start button to reload configuration.
-		if ((state.Buttons & GamepadButtons::GamepadButtons_RightShoulder) != 0 &&
-			(state.Buttons & GamepadButtons::GamepadButtons_LeftShoulder) != 0 &&
-			(state.Buttons & GamepadButtons::GamepadButtons_Menu) != 0) {
+		/*
+		if ((state.Buttons & RacingWheelButtons::GamepadButtons_RightShoulder) != 0 &&
+			(state.Buttons & RacingWheelButtons::GamepadButtons_LeftShoulder) != 0 &&
+			(state.Buttons & RacingWheelButtons::GamepadButtons_Menu) != 0) {
 			GetConfig();
-		}
+		}*/
 
 
 		pState->dwPacketNumber = state.Timestamp;
@@ -459,31 +463,35 @@ DLLEXPORT DWORD WINAPI XInputGetState(_In_ DWORD dwUserIndex, _Out_ XINPUT_STATE
 
 DLLEXPORT DWORD WINAPI XInputSetState(_In_ DWORD dwUserIndex, _In_ XINPUT_VIBRATION *pVibration)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	auto gamepad = gamepads[dwUserIndex];
+	auto racingWheel = racingWheels[dwUserIndex];
 
-	GamepadReading state;
-	HRESULT hr = gamepad->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheel->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 
-		GamepadVibration vibration;
+		/*
+			TODO: support wheel motor FFB:
+			https://docs.microsoft.com/en-us/windows/uwp/gaming/racing-wheel-and-force-feedback
+			GamepadVibration vibration;
 
-		float LSpeed = pVibration->wLeftMotorSpeed / 65535.0f;
-		float RSpeed = pVibration->wRightMotorSpeed / 65535.0f;
+			float LSpeed = pVibration->wLeftMotorSpeed / 65535.0f;
+			float RSpeed = pVibration->wRightMotorSpeed / 65535.0f;
 
-		vibration.LeftMotor = MotorSwap ? RSpeed * LMotorStrength : LSpeed * LMotorStrength;
-		vibration.RightMotor = MotorSwap ? LSpeed * RMotorStrength : RSpeed * RMotorStrength;
+			vibration.LeftMotor = MotorSwap ? RSpeed * LMotorStrength : LSpeed * LMotorStrength;
+			vibration.RightMotor = MotorSwap ? LSpeed * RMotorStrength : RSpeed * RMotorStrength;
 
-		vibration.LeftTrigger = TriggerSwap ? RSpeed * LTriggerStrength : LSpeed * LTriggerStrength;
-		vibration.RightTrigger = TriggerSwap ? LSpeed * RTriggerStrength : RSpeed * RTriggerStrength;
+			vibration.LeftTrigger = TriggerSwap ? RSpeed * LTriggerStrength : LSpeed * LTriggerStrength;
+			vibration.RightTrigger = TriggerSwap ? LSpeed * RTriggerStrength : RSpeed * RTriggerStrength;
 
-		gamepad->put_Vibration(vibration);
+			racingWheel->put_Vibration(vibration);
+		*/
 
 		return ERROR_SUCCESS;
 	}
@@ -497,31 +505,33 @@ DLLEXPORT DWORD WINAPI XInputSetState(_In_ DWORD dwUserIndex, _In_ XINPUT_VIBRAT
 
 DLLEXPORT DWORD WINAPI XInputGetCapabilities(_In_ DWORD dwUserIndex, _In_ DWORD dwFlags, _Out_ XINPUT_CAPABILITIES *pCapabilities)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	auto gamepad = gamepads[dwUserIndex];
+	auto racingWheel = racingWheels[dwUserIndex];
 
-	GamepadReading state;
-	HRESULT hr = gamepad->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheel->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 
-		ComPtr<IGameController> gamepadInfo;
-		gamepads[dwUserIndex].As(&gamepadInfo);
+		ComPtr<IGameController> racingWheelInfo;
+		racingWheels[dwUserIndex].As(&racingWheelInfo);
 
 		boolean wireless;
-		gamepadInfo->get_IsWireless(&wireless);
+		racingWheelInfo->get_IsWireless(&wireless);
+
+		ABI::Windows::Gaming::Input::ForceFeedback::IForceFeedbackMotor* wheelMotor;
+		racingWheel->get_WheelMotor(&wheelMotor);
 
 		pCapabilities->Type = XINPUT_DEVTYPE_GAMEPAD;
 
-		pCapabilities->SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
+		pCapabilities->SubType = XINPUT_DEVSUBTYPE_WHEEL;
 
-		pCapabilities->Flags += XINPUT_CAPS_FFB_SUPPORTED;
-
+		if (wheelMotor) pCapabilities->Flags += XINPUT_CAPS_FFB_SUPPORTED;
 		if (wireless) pCapabilities->Flags += XINPUT_CAPS_WIRELESS;
 
 		return ERROR_SUCCESS;
@@ -538,16 +548,16 @@ DLLEXPORT void WINAPI XInputEnable(_In_ BOOL enable)
 
 DLLEXPORT DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID* pDSoundRenderGuid, GUID* pDSoundCaptureGuid)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	auto gamepad = gamepads[dwUserIndex];
+	auto racingWheel = racingWheels[dwUserIndex];
 
-	GamepadReading state;
-	HRESULT hr = gamepad->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheel->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 		return ERROR_SUCCESS;
@@ -560,16 +570,16 @@ DLLEXPORT DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID* 
 
 DLLEXPORT DWORD WINAPI XInputGetBatteryInformation(_In_ DWORD dwUserIndex, _In_ BYTE devType, _Out_ XINPUT_BATTERY_INFORMATION *pBatteryInformation)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	auto gamepad = gamepads[dwUserIndex];
+	auto racingWheel = racingWheels[dwUserIndex];
 
-	GamepadReading state;
-	HRESULT hr = gamepad->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheel->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 		return ERROR_SUCCESS;
@@ -581,7 +591,7 @@ DLLEXPORT DWORD WINAPI XInputGetBatteryInformation(_In_ DWORD dwUserIndex, _In_ 
 	/*
 
 	ComPtr<IGameControllerBatteryInfo> battInf;
-	gamepads[dwUserIndex].As(&battInf);
+	racingWheels[dwUserIndex].As(&battInf);
 
 	ComPtr<IGameController> test;
 
@@ -608,14 +618,14 @@ DLLEXPORT DWORD WINAPI XInputGetBatteryInformation(_In_ DWORD dwUserIndex, _In_ 
 
 DLLEXPORT DWORD WINAPI XInputGetKeystroke(DWORD dwUserIndex, DWORD dwReserved, PXINPUT_KEYSTROKE pKeystroke)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	GamepadReading state;
-	HRESULT hr = gamepads[dwUserIndex]->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheels[dwUserIndex]->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 		return ERROR_SUCCESS;
@@ -633,16 +643,16 @@ DLLEXPORT DWORD WINAPI XInputGetStateEx(_In_ DWORD dwUserIndex, _Out_ XINPUT_STA
 
 DLLEXPORT DWORD WINAPI XInputWaitForGuideButton(_In_ DWORD dwUserIndex, _In_ DWORD dwFlag, _In_ LPVOID pVoid)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	auto gamepad = gamepads[dwUserIndex];
+	auto racingWheel = racingWheels[dwUserIndex];
 
-	GamepadReading state;
-	HRESULT hr = gamepad->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheel->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 		return ERROR_SUCCESS;
@@ -655,16 +665,16 @@ DLLEXPORT DWORD WINAPI XInputWaitForGuideButton(_In_ DWORD dwUserIndex, _In_ DWO
 
 DLLEXPORT DWORD XInputCancelGuideButtonWait(_In_ DWORD dwUserIndex)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	auto gamepad = gamepads[dwUserIndex];
+	auto racingWheel = racingWheels[dwUserIndex];
 
-	GamepadReading state;
-	HRESULT hr = gamepad->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheel->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 		return ERROR_SUCCESS;
@@ -677,16 +687,16 @@ DLLEXPORT DWORD XInputCancelGuideButtonWait(_In_ DWORD dwUserIndex)
 
 DLLEXPORT DWORD XInputPowerOffController(_In_ DWORD dwUserIndex)
 {
-	InitializeGamepad();
+	InitializeRacingWheel();
 
-	if (gamepads[dwUserIndex] == NULL) {
+	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
 	}
 
-	auto gamepad = gamepads[dwUserIndex];
+	auto racingWheel = racingWheels[dwUserIndex];
 
-	GamepadReading state;
-	HRESULT hr = gamepad->GetCurrentReading(&state);
+	RacingWheelReading state;
+	HRESULT hr = racingWheel->GetCurrentReading(&state);
 
 	if (SUCCEEDED(hr)) {
 		return ERROR_SUCCESS;

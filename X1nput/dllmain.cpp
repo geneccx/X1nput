@@ -421,6 +421,9 @@ DLLEXPORT DWORD WINAPI XInputGetState(_In_ DWORD dwUserIndex, _Out_ XINPUT_STATE
 		pState->Gamepad.sThumbLX = (state.Wheel >= 0) ? state.Wheel * 32767 : state.Wheel * 32768;
 		pState->Gamepad.sThumbLY = 0;
 
+		pState->Gamepad.sThumbRX = 0;
+		pState->Gamepad.sThumbRY = 0;
+
 		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button3) != 0) keys += XINPUT_GAMEPAD_A;
 		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button4) != 0) keys += XINPUT_GAMEPAD_B;
 		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button5) != 0) keys += XINPUT_GAMEPAD_X;
@@ -544,6 +547,10 @@ DLLEXPORT DWORD WINAPI XInputGetCapabilities(_In_ DWORD dwUserIndex, _In_ DWORD 
 
 DLLEXPORT void WINAPI XInputEnable(_In_ BOOL enable)
 {
+	InitializeRacingWheel();
+
+	std::cout << "XInputEnable" << std::endl;
+	ScanRacingWheels();
 }
 
 DLLEXPORT DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID* pDSoundRenderGuid, GUID* pDSoundCaptureGuid)

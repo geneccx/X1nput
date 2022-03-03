@@ -480,9 +480,11 @@ DLLEXPORT DWORD WINAPI XInputGetState(_In_ DWORD dwUserIndex, _Out_ XINPUT_STATE
 		/*
 		if ((state.Buttons & RacingWheelButtons::GamepadButtons_RightThumbstick) != 0) keys += XINPUT_GAMEPAD_RIGHT_THUMB;
 		if ((state.Buttons & RacingWheelButtons::GamepadButtons_LeftThumbstick) != 0) keys += XINPUT_GAMEPAD_LEFT_THUMB;
-		if ((state.Buttons & RacingWheelButtons::GamepadButtons_RightShoulder) != 0) keys += XINPUT_GAMEPAD_RIGHT_SHOULDER;
-		if ((state.Buttons & RacingWheelButtons::GamepadButtons_LeftShoulder) != 0) keys += XINPUT_GAMEPAD_LEFT_SHOULDER;
 		*/
+
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_PreviousGear) != 0) keys += XINPUT_GAMEPAD_LEFT_SHOULDER;
+		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_NextGear) != 0) keys += XINPUT_GAMEPAD_RIGHT_SHOULDER;
+
 		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button2) != 0) keys += XINPUT_GAMEPAD_BACK;
 		if ((state.Buttons & RacingWheelButtons::RacingWheelButtons_Button1) != 0) keys += XINPUT_GAMEPAD_START;
 

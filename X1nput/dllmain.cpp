@@ -517,7 +517,7 @@ DLLEXPORT DWORD WINAPI XInputGetState(_In_ DWORD dwUserIndex, _Out_ XINPUT_STATE
 DLLEXPORT DWORD WINAPI XInputSetState(_In_ DWORD dwUserIndex, _In_ XINPUT_VIBRATION *pVibration)
 {
 	InitializeRacingWheel();
-	std::cout << "XInputSetState" << std::endl;
+	//std::cout << "XInputSetState" << std::endl;
 
 	if (racingWheels[dwUserIndex] == NULL) {
 		return ERROR_DEVICE_NOT_CONNECTED;
